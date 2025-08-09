@@ -2,3 +2,6 @@ node_modules
 *.log
 .DS_Store
 error-screenshot.png
+test.js
+cookies.json
+package-lock.json
