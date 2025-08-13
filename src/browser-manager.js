@@ -1,33 +1,53 @@
-const puppeteer = require('puppeteer');
-const { log } = require('./logger');
-const { headless, deviceName } = require('./config');
+const puppeteer = require("puppeteer");
+const { log } = require("./logger");
+const base = require("./config");
 
+/**
+ * @typedef {Object} LaunchOverrides
+ * @property {boolean} [headless]
+ * @property {string} [executablePath]
+ * @property {string[]} [args]
+ * @property {string} [deviceName]
+ * @property {boolean} [blockRequests]
+ * @property {import('puppeteer').Viewport} [defaultViewport]
+ */
+
+/**
+ * @param {LaunchOverrides} [overrides]
+ * @returns {Promise<{browser: import('puppeteer').Browser, page: import('puppeteer').Page}>}
+ */
 const launchBrowser = async (overrides = {}) => {
-  log('launching browser', 'info');
+  const headless = overrides.headless ?? base.headless;
+  const deviceName = overrides.deviceName ?? base.deviceName;
+  log(`launching browser (headless=${headless})`, "info");
   const browser = await puppeteer.launch({
-    headless: overrides.headless ?? headless,
-    executablePath: overrides.executablePath,        // optional
-    args: overrides.args ?? ['--no-sandbox', '--disable-dev-shm-usage'],
-    defaultViewport: overrides.defaultViewport ?? null
+    headless,
+    executablePath: overrides.executablePath,
+    args: overrides.args ?? ["--no-sandbox", "--disable-dev-shm-usage"],
+    defaultViewport: overrides.defaultViewport ?? null,
   });
   const page = await browser.newPage();
-  await page.emulate(puppeteer.KnownDevices[overrides.deviceName ?? deviceName]);
-  log(`emulated ${deviceName}`, 'debug');
+  await page.emulate(puppeteer.KnownDevices[deviceName]);
+  log(`emulated ${deviceName}`, "debug");
   if (overrides.blockRequests !== false) await enableRequestBlocking(page);
   return { browser, page };
 };
 
+/** @param {import('puppeteer').Page} page */
 const enableRequestBlocking = async (page) => {
   await page.setRequestInterception(true);
-  page.on('request', req => {
+  page.on("request", (req) => {
     const type = req.resourceType();
-    if (type === 'image' || type === 'font' || type === 'stylesheet' || type === 'media') return req.abort();
+    if (["image", "font", "stylesheet", "media"].includes(type)) return req.abort();
     req.continue();
   });
 };
 
+/** @param {import('puppeteer').Browser} browser */
 const safeClose = async (browser) => {
-  try { if (browser?.isConnected?.()) await browser.close(); } catch {}
+  try {
+    if (browser?.isConnected?.()) await browser.close();
+  } catch {}
 };
 
 module.exports = { launchBrowser, safeClose };

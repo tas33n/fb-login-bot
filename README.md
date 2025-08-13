@@ -17,7 +17,6 @@ npm i fb-login-bot
 
 ## Usage
 ```js
-// src/index.js (example)
 const { loginFacebook } = require('fb-login-bot');
 
 (async () => {
@@ -25,11 +24,13 @@ const { loginFacebook } = require('fb-login-bot');
     email: process.env.FB_EMAIL,
     password: process.env.FB_PASSWORD,
     twoFASecret: process.env.FB_2FA_SECRET,
-    cookiesFile: process.env.COOKIES_PATH || 'cookies.json'
+    cookiesFile: process.env.COOKIES_PATH || null,
+    headless: true,
   });
   console.log(res);
 })();
 ```
+
 
 ### Env
 - `FB_EMAIL`, `FB_PASSWORD`, `FB_2FA_SECRET`
