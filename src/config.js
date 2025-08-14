@@ -24,7 +24,7 @@ const config = {
   headless: process.env.HEADLESS !== "false",
   cookiesPath: process.env.COOKIES_PATH || null,
   tz: process.env.TZ || "Asia/Dhaka",
-  debug: true, //process.env.DEBUG === "true",
+  debug: process.env.DEBUG === "true",
   loginUrl: "https://m.facebook.com/login",
   profileUrl: "https://m.facebook.com/profile.php",
   deviceName: "iPhone 15 Pro",
