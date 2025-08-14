@@ -1,6 +1,6 @@
 {
   "name": "fb-login-bot",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Facebook auto-login with 2FA using Puppeteer. Cookie-aware, resilient, and production-ready.",
   "type": "commonjs",
   "main": "src/facebook-login.js",
