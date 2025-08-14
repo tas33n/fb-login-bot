@@ -31,13 +31,16 @@ const readJson = async (p) => JSON.parse(await fs.readFile(p, "utf8"));
 
 /**
  * @param {import('puppeteer').Page} page
+ * @param {number} [timeoutMs]
  * @returns {Promise<boolean>}
  */
-const hasGoToProfileButton = async (page) => {
+const hasGoToProfileButton = async (page, timeoutMs = 8000) => {
   try {
-    return await page.evaluate(
-      () => !!document.querySelector('[role="button"][aria-label="Go to profile"]')
+    await page.waitForFunction(
+      () => !!document.querySelector('[role="button"][aria-label="Go to profile"]'),
+      { timeout: timeoutMs }
     );
+    return true;
   } catch {
     return false;
   }
@@ -45,10 +48,15 @@ const hasGoToProfileButton = async (page) => {
 
 /**
  * @param {import('puppeteer').Page} page
+ * @param {number} [timeoutMs]
  * @returns {Promise<boolean>}
  */
-const clickGoToProfile = async (page) => {
+const clickGoToProfile = async (page, timeoutMs = 8000) => {
   try {
+    await page.waitForFunction(
+      () => !!document.querySelector('[role="button"][aria-label="Go to profile"]'),
+      { timeout: timeoutMs }
+    );
     const clicked = await page.evaluate(() => {
       const el = document.querySelector('[role="button"][aria-label="Go to profile"]');
       if (!el) return false;
@@ -57,16 +65,15 @@ const clickGoToProfile = async (page) => {
     });
     if (!clicked) return false;
     await Promise.race([
-      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 8000 }).catch(() => {}),
-      page
-        .waitForFunction(() => /profile\.php|\/profile\//i.test(location.href), { timeout: 8000 })
-        .catch(() => {}),
+      page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 10000 }).catch(() => {}),
+      page.waitForFunction(() => /profile\.php|\/profile\//i.test(location.href), { timeout: 10000 }).catch(() => {}),
     ]);
     return true;
   } catch {
     return false;
   }
 };
+
 
 /**
  * @param {import('puppeteer').Page} page
@@ -93,7 +100,10 @@ const isLoginLike = async (page) => {
  */
 const gotoHome = async (page) => {
   try {
-    await page.goto("https://m.facebook.com/", { waitUntil: "domcontentloaded", timeout: 20000 });
+    await page.goto("https://m.facebook.com/", {
+      waitUntil: "domcontentloaded",
+      timeout: 20000,
+    });
   } catch (e) {
     log(`auth-check: goto home failed: ${e?.message || e}`, "warn");
   }
@@ -107,7 +117,12 @@ const gotoHome = async (page) => {
 const checkIfAuthenticated = async (page, browser) => {
   const cookies = await getCookies(browser);
   const names = cookies.map((c) => c.name).sort();
-  log(`auth-check: cookie snapshot count=${cookies.length}, names=[${names.join(", ")}]`, "debug");
+  log(
+    `auth-check: cookie snapshot count=${cookies.length}, names=[${names.join(
+      ", "
+    )}]`,
+    "debug"
+  );
 
   const beforeUrl = page.url();
   if (beforeUrl) log(`auth-check: precheck url=${beforeUrl}`, "debug");
@@ -116,12 +131,19 @@ const checkIfAuthenticated = async (page, browser) => {
   let landed = page.url();
   log(`auth-check: landed on ${landed}`, "debug");
 
-  if (await isLoginLike(page)) return { authenticated: false, userID: null, profileName: null };
+  if (await isLoginLike(page))
+    return { authenticated: false, userID: null, profileName: null };
 
-  const hasProfileBtn = await hasGoToProfileButton(page);
+  const hasProfileBtn = await hasGoToProfileButton(page, 12000)
   const cUser = cookies.find((c) => c.name === "c_user");
-  if (!hasProfileBtn && !cUser) return { authenticated: false, userID: null, profileName: null };
-
+  if (!hasProfileBtn && !cUser)
+    return { authenticated: false, userID: null, profileName: null };
+  log(
+    `auth-check: hasProfileBtn=${hasProfileBtn}, cUser=${
+      cUser?.value || "null"
+    }`,
+    "debug"
+  );
   let profileName = null;
   if (hasProfileBtn) {
     for (let i = 1; i <= 3; i++) {
@@ -129,14 +151,17 @@ const checkIfAuthenticated = async (page, browser) => {
       const ok = await clickGoToProfile(page);
       landed = page.url();
       log(`auth-check: post-click url=${landed}`, "debug");
-      if (ok && /profile\.php|\/profile\//i.test(landed)) break;
-      await page.waitForTimeout(350);
+      // if (ok && /profile\.php|\/profile\//i.test(landed)) 
+        break;
+      await sleep(350);
     }
     try {
       const h = await page.waitForFunction(
         () => {
           const el = document.querySelector('[role="heading"]');
-          return el?.getAttribute("aria-label") || el?.textContent?.trim() || null;
+          return (
+            el?.getAttribute("aria-label") || el?.textContent?.trim() || null
+          );
         },
         { timeout: 6000 }
       );
@@ -149,7 +174,9 @@ const checkIfAuthenticated = async (page, browser) => {
       const ui = await page.evaluate(() => {
         const heading = document.querySelector('[role="heading"]');
         const headingText =
-          heading?.getAttribute("aria-label") || heading?.textContent?.trim() || null;
+          heading?.getAttribute("aria-label") ||
+          heading?.textContent?.trim() ||
+          null;
         return {
           logout: !!document.querySelector('a[href*="/logout.php"]'),
           settings: !!document.querySelector('a[href^="/settings"]'),
@@ -158,13 +185,23 @@ const checkIfAuthenticated = async (page, browser) => {
           headingText,
         };
       });
-      const hasUi = ui.logout || ui.settings || ui.messages || ui.friends || !!ui.headingText;
-      if (!hasUi && !cUser) return { authenticated: false, userID: null, profileName: null };
+      const hasUi =
+        ui.logout ||
+        ui.settings ||
+        ui.messages ||
+        ui.friends ||
+        !!ui.headingText;
+      if (!hasUi && !cUser)
+        return { authenticated: false, userID: null, profileName: null };
       profileName = ui.headingText || profileName;
     } catch {}
   }
 
-  return { authenticated: true, userID: cUser?.value || null, profileName: profileName || null };
+  return {
+    authenticated: true,
+    userID: cUser?.value || null,
+    profileName: profileName || null,
+  };
 };
 
 /**
@@ -192,7 +229,9 @@ async function loginFacebook(args) {
     password,
     twoFASecret,
     existingCookies = null,
-    cookiesFile = (args.cookiesFile === null ? null : args.cookiesFile) ?? base.cookiesPath ?? null,
+    cookiesFile = (args.cookiesFile === null ? null : args.cookiesFile) ??
+      base.cookiesPath ??
+      null,
     headless,
     executablePath,
     args: launchArgs,
@@ -236,9 +275,15 @@ async function loginFacebook(args) {
           log("authenticated via cookies file", "success");
           return viaFile;
         }
-        log("stored cookies invalid/expired; continuing with credentials", "warn");
+        log(
+          "stored cookies invalid/expired; continuing with credentials",
+          "warn"
+        );
       } catch (e) {
-        log(`failed reading cookies file ${cookiesFile}: ${e?.message || e}`, "warn");
+        log(
+          `failed reading cookies file ${cookiesFile}: ${e?.message || e}`,
+          "warn"
+        );
       }
     }
 
@@ -251,12 +296,17 @@ async function loginFacebook(args) {
     }
 
     log("navigating to login", "info");
-    await page.goto(base.loginUrl, { waitUntil: "domcontentloaded", timeout: base.timeouts.nav });
+    await page.goto(base.loginUrl, {
+      waitUntil: "domcontentloaded",
+      timeout: base.timeouts.nav,
+    });
 
     const welcomed = await page.evaluate(() => {
       const norm = (s) => (s || "").replace(/\s+/g, " ").trim().toLowerCase();
       const wanted = "i already have an account";
-      const nodes = document.querySelectorAll('span,button,[role="button"],a,div');
+      const nodes = document.querySelectorAll(
+        'span,button,[role="button"],a,div'
+      );
       for (const el of nodes) {
         if (norm(el.innerText) === wanted) {
           const btn = el.closest('button,[role="button"],a') || el;
@@ -280,13 +330,25 @@ async function loginFacebook(args) {
 
     log('clicking "Log in"', "info");
     await clickByText(page, "Log in", 5, 300, true, 'click "Log in"');
-    await page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 8000 }).catch(() => {});
+    await page
+      .waitForNavigation({ waitUntil: "domcontentloaded", timeout: 8000 })
+      .catch(() => {});
     await sleep(200);
 
     log('clicking "Try another way"', "info");
-    await clickByText(page, "Try another way", 5, 200, true, 'click "Try another way"');
+    await clickByText(
+      page,
+      "Try another way",
+      5,
+      200,
+      true,
+      'click "Try another way"'
+    );
 
-    log("selecting radio by aria-label: Authentication app + Get a code...", "info");
+    log(
+      "selecting radio by aria-label: Authentication app + Get a code...",
+      "info"
+    );
     const radioOrCode = await Promise.race([
       selectRadioByAriaLabel(
         page,
@@ -299,7 +361,10 @@ async function loginFacebook(args) {
         .catch(() => "skip"),
       page
         .waitForFunction(
-          () => !!document.querySelector('input[aria-label="Code"],input[name="approvals_code"]'),
+          () =>
+            !!document.querySelector(
+              'input[aria-label="Code"],input[name="approvals_code"]'
+            ),
           { timeout: 3000 }
         )
         .then(() => "code")
@@ -307,17 +372,30 @@ async function loginFacebook(args) {
     ]);
     if (radioOrCode === "radio") {
       log('radio selected, clicking "Continue"', "info");
-      await clickByText(page, "Continue", 5, 250, true, 'click "Continue" after radio');
+      await clickByText(
+        page,
+        "Continue",
+        5,
+        250,
+        true,
+        'click "Continue" after radio'
+      );
     }
 
     await page
       .waitForFunction(
-        () => !!document.querySelector('input[aria-label="Code"],input[name="approvals_code"]'),
+        () =>
+          !!document.querySelector(
+            'input[aria-label="Code"],input[name="approvals_code"]'
+          ),
         { timeout: 8000 }
       )
       .catch(() => {});
     const needCode = await page.evaluate(
-      () => !!document.querySelector('input[aria-label="Code"],input[name="approvals_code"]')
+      () =>
+        !!document.querySelector(
+          'input[aria-label="Code"],input[name="approvals_code"]'
+        )
     );
     if (needCode && twoFASecret) {
       log("filling 2FA code", "info");
@@ -332,7 +410,14 @@ async function loginFacebook(args) {
         if (v === code) break;
         await sleep(150);
       }
-      await clickByText(page, "Continue", 5, 250, true, 'click "Continue" after code');
+      await clickByText(
+        page,
+        "Continue",
+        5,
+        250,
+        true,
+        'click "Continue" after code'
+      );
     }
 
     try {
@@ -346,7 +431,14 @@ async function loginFacebook(args) {
 
     const gotCookie = await waitForCUserCookie(browser, 12000, 250);
     if (!gotCookie) {
-      await clickByText(page, "Continue", 2, 250, true, 'click "Continue" checkpoint');
+      await clickByText(
+        page,
+        "Continue",
+        2,
+        250,
+        true,
+        'click "Continue" checkpoint'
+      );
       await sleep(500);
     }
 
