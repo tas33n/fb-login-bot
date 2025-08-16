@@ -22,7 +22,7 @@ const launchBrowser = async (overrides = {}) => {
   log(`launching browser (headless=${headless})`, "info");
   const browser = await puppeteer.launch({
     headless,
-    executablePath: overrides.executablePath,
+    executablePath: overrides.executablePath ?? process.env.PUPPETEER_EXECUTABLE_PATH,
     args: overrides.args ?? ["--no-sandbox", "--disable-dev-shm-usage"],
     defaultViewport: overrides.defaultViewport ?? null,
   });
